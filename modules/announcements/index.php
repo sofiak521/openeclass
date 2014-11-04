@@ -342,6 +342,9 @@ if ($is_editor) {
         else {
             $message = "<p class='success'>$langAnnAdd</p>";
         }
+//-- new code from Sofia
+postToFb($course_code, $id, $antitle);         
+        
     } // end of if $submit
 
 
@@ -468,3 +471,76 @@ $head_content .= "<script type='text/javascript'>$(document).ready(function () {
 });</script>
 <link href='../../js/jquery.multiselect.css' rel='stylesheet' type='text/css'>";
 draw($tool_content, 2, null, $head_content);
+
+
+//----------------------
+function postToFb($course_code, $id, $antitle) {
+//--  add code - sofia
+// Facebook API call
+$url = 'https://graph.facebook.com/v2.1/695730993849543/feed?access_token=CAANapFfgn3QBAA1reXj15nCo4RgZB3cEViKnXe0i0dTDnjhirBYYjVTv46sPL6sVosAR1L832I5wvlc3ObX4JCaZA8hubsW1qgEz0sS1bpuuDQKLZCAmMEY8guSz0BiNqQwEbpiSauM0wqwtW299p8BBzJUkTVtPMaJJNSCct3baXAwY1gy';
+
+//-- constuct link 
+$link1 = $_SERVER['SERVER_NAME'] .  $_SERVER['PHP_SELF'] . 
+ '?course=' .   $course_code . '&an_id=' . $id; 
+$link1 = urlencode($link1);  
+
+//-- constuct body of announcement  
+$body1 = $_POST['newContent'];
+$body1 = strip_tags($body1);
+
+//-- find names of countries
+$body_array = explode('#', $body1);
+//-- throw the first element
+array_shift($body_array);
+$names_countries="";
+foreach ($body_array as $key => $value)  {  
+     //echo "<br/>value=" . $value; 
+     $country = substr($value, 0, 2);
+     if (strpos($names_countries, $country) === false) {
+       $names_countries .= $country . ',';
+       //echo  "<br/>sss=" . $names_countries; 
+     } //-- if 
+   //echo  "<br/>country=" . $country; 
+} //-- foreach 
+
+//echo  "<br/>body1=" . $body1; 
+$names_countries = rtrim($names_countries,','); 
+//echo "<br/>countries=" . $names_countries; 
+
+
+//$fields = array('message' => urlencode($_POST['newContent']));
+$fields = array(
+                'message' => $body1,
+                'name'  =>   $antitle, 
+                'link'    => $link1, 
+                'countries' => $names_countries 
+               );
+//url-ify the data for the POST
+$fields_string ="";
+foreach($fields as $key=>$value) 
+   {$fields_string .= $key.'='.$value.'&'; }
+$fields_string=rtrim($fields_string, '&');   
+
+//open connection
+$ch = curl_init();
+
+//set the url, number of POST vars, POST data
+curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, FALSE);
+curl_setopt($ch, CURLOPT_TIMEOUT, 60);
+
+curl_setopt($ch,CURLOPT_URL, $url);
+curl_setopt($ch,CURLOPT_POST, count($fields));  
+curl_setopt($ch,CURLOPT_POSTFIELDS, $fields_string);
+
+curl_setopt($ch,CURLOPT_RETURNTRANSFER,1);
+
+//execute post
+$result = curl_exec($ch);
+
+//close connection
+curl_close($ch);
+//--- end of new code - sofia   
+}//-- end function  
+ 
+ 
+?>

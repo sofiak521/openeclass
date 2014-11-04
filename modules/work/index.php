@@ -326,14 +326,37 @@ function add_assignment() {
     $max_grade = filter_input(INPUT_POST, 'max_grade', FILTER_VALIDATE_FLOAT);
     $assign_to_specific = filter_input(INPUT_POST, 'assign_to_specific', FILTER_VALIDATE_INT);
     $assigned_to = filter_input(INPUT_POST, 'ingroup', FILTER_VALIDATE_INT, FILTER_REQUIRE_ARRAY);
-    $secret = uniqid('');
-
+	$langs =""; 
+	$cpp = filter_input(INPUT_POST, 'cpp', FILTER_VALIDATE_INT); //--new 
+	if ($cpp) $langs = 'cpp-'; 
+	$csharp= filter_input(INPUT_POST, 'csharp', FILTER_VALIDATE_INT); //--new 
+	if ($csharp) $langs = $langs . 'cs-';  
+	$java= filter_input(INPUT_POST, 'java', FILTER_VALIDATE_INT); //--new 
+	if ($java) $langs = $langs . 'java-';  
+	$javascript= filter_input(INPUT_POST, 'javascript', FILTER_VALIDATE_INT); //--new 
+	if ($javascript) $langs = $langs . 'js-';  
+	$haskell= filter_input(INPUT_POST, 'haskell', FILTER_VALIDATE_INT); //--new 
+	if ($haskell) $langs = $langs . 'hs-';  
+	$perl= filter_input(INPUT_POST, 'perl', FILTER_VALIDATE_INT); //--new 
+	if ($perl) $langs = $langs . 'pl-';  
+	$php= filter_input(INPUT_POST, 'php', FILTER_VALIDATE_INT); //--new 
+	if ($php) $langs = $langs . 'php-';  
+	$python= filter_input(INPUT_POST, 'python', FILTER_VALIDATE_INT); //--new 
+	if ($python) $langs = $langs . 'py-';  
+	$ruby= filter_input(INPUT_POST, 'ruby', FILTER_VALIDATE_INT); //--new 
+	if ($ruby) $langs = $langs . 'rb-';  
+	$langs = rtrim($langs, '-');
+	//echo "<br/>langs=". $langs; 
+	$auto_judge = filter_input(INPUT_POST, 'auto_judge', FILTER_VALIDATE_INT); //-- new
+	
+	$secret = uniqid('');
+  
     if ($assign_to_specific == 1 && empty($assigned_to)) {
         $assign_to_specific = 0;
     }
     if (@mkdir("$workPath/$secret", 0777) && @mkdir("$workPath/admin_files/$secret", 0777, true)) {       
-        $id = Database::get()->query("INSERT INTO assignment (course_id, title, description, deadline, late_submission, comments, submission_date, secret_directory, group_submissions, max_grade, assign_to_specific) "
-                . "VALUES (?d, ?s, ?s, ?t, ?d, ?s, ?t, ?s, ?d, ?d, ?d)", $course_id, $title, $desc, $deadline, $late_submission, '', date("Y-m-d H:i:s"), $secret, $group_submissions, $max_grade, $assign_to_specific)->lastInsertID;
+        $id = Database::get()->query("INSERT INTO assignment (course_id, title, description, deadline, late_submission, comments, submission_date, secret_directory, group_submissions, max_grade, assign_to_specific, auto_judge, langs) "
+                . "VALUES (?d, ?s, ?s, ?t, ?d, ?s, ?t, ?s, ?d, ?d, ?d, ?d, ?s)", $course_id, $title, $desc, $deadline, $late_submission, '', date("Y-m-d H:i:s"), $secret, $group_submissions, $max_grade, $assign_to_specific, $auto_judge, $langs)->lastInsertID;
         $secret = work_secret($id);
         if ($id) {
             $local_name = uid_to_name($uid);
@@ -421,9 +444,10 @@ function submit_work($id, $on_behalf_of = null) {
         }
     } //checks for submission validity end here
     
-    $row = Database::get()->querySingle("SELECT title, group_submissions FROM assignment WHERE course_id = ?d AND id = ?d", $course_id, $id);
+    $row = Database::get()->querySingle("SELECT title, group_submissions, auto_judge FROM assignment WHERE course_id = ?d AND id = ?d", $course_id, $id);
     $title = q($row->title);
     $group_sub = $row->group_submissions;
+	$auto_judge = $row->auto_judge; //-- new 
     $nav[] = $works_url;
     $nav[] = array('url' => "$_SERVER[SCRIPT_NAME]?id=$id", 'name' => $title);
 
@@ -522,11 +546,68 @@ function submit_work($id, $on_behalf_of = null) {
         } else {
             $tool_content .= "<p class='caution'>$langUploadError<br /><a href='$_SERVER[SCRIPT_NAME]?course=$course_code'>$langBack</a></p><br />";
         }
+  //---------------------------------------------------------------------------
+  //-- add new code sofia
+  // Auto-judge: Send file to hackearth
+ $computer_languages = array("cpp"=>"CPP","cs"=>"CSHARP", "java"=>"JAVA", 
+ "js"=>"JAVASCRIPT",  "hs"=>"HASKELL", "pl"=>"PERL","php"=>"PHP", "py"=>"PYTHON", "rb"=>"RUBY"); 
+
+if($auto_judge) {  
+global $hackerEarthKey;
+$content = file_get_contents("$workPath/$filename");
+
+ $row = Database::get()->querySingle("SELECT title, group_submissions, langs FROM assignment WHERE course_id = ?d AND id = ?d", $course_id, $id);
+ $langs = $row->langs;
+ //echo "<br/>langsSELECT=" . $langs; 
+ 
+ $pos=0; 
+ $pos = strpos($filename, '.');
+ $extension= substr($filename, $pos+1); //-- take the extension of file 
+ $pos1=0;
+ $pos1=strpos($langs, $extension);
+ $cs_lang="";  //-- name of language
+ $fields=""; 
+ $fields_string=""; 
+ if  (array_key_exists($extension, $computer_languages)) { 
+       if (strpos($langs, $extension)) //-- teacher has checked this language
+       {  $cs_lang=$computer_languages[$extension]; 
+	      //set POST variables
+          $url = 'http://api.hackerearth.com/code/run/';
+          $fields = array('client_secret' => $hackerEarthKey, 'source' => $content, 'lang' => $cs_lang);
+          //url-ify the data for the POST
+          foreach($fields as $key=>$value) { $fields_string .= $key.'='.$value.'&'; }
+          rtrim($fields_string, '&');
+          //open connection
+          $ch = curl_init();
+          //set the url, number of POST vars, POST data
+          curl_setopt($ch,CURLOPT_URL, $url);
+          curl_setopt($ch,CURLOPT_POST, count($fields));
+          curl_setopt($ch,CURLOPT_POSTFIELDS, $fields_string);
+          curl_setopt($ch,CURLOPT_RETURNTRANSFER,1);
+          //execute post
+          $result = curl_exec($ch);
+          $result = json_decode($result, true);
+           $result['run_status']['output'] = trim($result['run_status']['output']);
+         // Add the output as a comment
+         submit_grade_comments($id, $sid, 10, 'Output: '.$result['run_status']['output'], false);
+	   }
+       else  { //-- when file-extension isn't checked by teacher
+	      submit_grade_comments($id, $sid, 0, 'Η γλώσσα δεν είναι ενεργοποιημένη από τον καθηγητή ', false); 
+	         }
+    } 
+  else  {//-- this extension doesn't exist in array 	   
+   submit_grade_comments($id, $sid, 0, 'Η γλώσσα δε μπορεί να μεταγλωτιστεί', false); 
+  }
+
+}// end if ($auto_judge)
+//------------------ end of new code   
+  
     } else { // not submit_ok
         $tool_content .="<p class='caution'>$langExerciseNotPermit<br /><a href='$_SERVER[SCRIPT_NAME]?course=$course_code'>$langBack</a></p></br>";
     }
 }
-
+//--------------------------------------------------------------------
+//--------------------------------------------------------------------
 //  assignment - prof view only
 function new_assignment() {
     global $tool_content, $m, $langAdd, $course_code, $course_id;
@@ -579,7 +660,47 @@ function new_assignment() {
           <th>$m[WorkAssignTo]:</th>
           <td><input type='radio' id='assign_button_all' name='assign_to_specific' value='0' checked='1' /><label for='assign_button_all'>Όλους</label>
           <br /><input type='radio' id='assign_button_some' name='assign_to_specific' value='1' /><label for='assign_button_some'>$m[WorkToUser]</label></td>
-        </tr>        
+        </tr>  
+        <tr>
+          <th>CPP</th>
+          <td><input type='checkbox' id='cpp' name='cpp' value='1' checked='1' /></td>
+		</tr>
+		<tr>  
+		  <th>CSHARP</th>
+          <td><input type='checkbox' id='csharp' name='csharp' value='1' checked='1' /></td>
+		</tr>
+		<tr>  
+		  <th>JAVA:</th>
+		  <td><input type='checkbox' id='java' name='java' value='1' checked='1' /></td> 
+		</tr>
+		<tr>  
+		  <th>JAVASCRIPT:</th>
+		  <td><input type='checkbox' id='javascript' name='javascript' value='1' checked='1' /></td> 
+		</tr>
+		<tr>  
+		  <th>HASKELL:</th>
+		  <td><input type='checkbox' id='haskell' name='haskell' value='1' checked='1' /></td>  
+		</tr>
+		<tr>  
+		  <th>PERL:</th>
+		  <td><input type='checkbox' id='perl' name='perl' value='1' checked='1' /></td>
+		</tr>
+		<tr> 
+		  <th>PHP:</th>
+		  <td><input type='checkbox' id='php' name='php' value='1' checked='1' /></td>
+		</tr>
+		<tr>  
+		  <th>PYTHON:</th>
+		  <td><input type='checkbox' id='python' name='python' value='1' checked='1' /></td>
+		 </tr>
+		<tr> 
+		  <th>RUBY:</th>
+		  <td><input type='checkbox' id='ruby' name='ruby' value='1' checked='1' /></td>
+		</tr>
+		<tr>  
+		   <th>auto_judge:</th>
+          <td><input type='checkbox' id='auto_judge' name='auto_judge' value='1' checked='1' /></td>
+        </tr>
         <tr id='assignees_tbl' style='display:none;'>
           <th class='left' valign='top'></th>
           <td>
@@ -615,7 +736,8 @@ function new_assignment() {
         </fieldset>
         </form>";    
 }
-
+//--------------------------------------------------------------------
+//--------------------------------------------------------------------
 //form for editing
 function show_edit_assignment($id) {
     
@@ -772,7 +894,8 @@ function show_edit_assignment($id) {
     </fieldset>
     </form>";
 }
-
+//--------------------------------------------------------------------
+//--------------------------------------------------------------------
 // edit assignment
 function edit_assignment($id) {
 
